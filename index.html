@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  
   <meta charset="UTF-8" />
   <title>OCR y extracción con formato</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
@@ -22,6 +23,12 @@
     pre {
       white-space: pre-wrap;
       font-family: monospace;
+      user-select: text;
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 1em;
+      line-height: 1.4;
     }
     #data {
       margin-top: 20px;
@@ -30,7 +37,22 @@
       border-radius: 6px;
     }
     canvas {
-      display: none;
+      display: block;
+      margin-top: 20px;
+      max-width: 100%;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
     }
   </style>
 </head>
@@ -38,107 +60,163 @@
 
   <h1>Sube un PDF escaneado</h1>
   <input type="file" id="pdfFile" accept="application/pdf" />
+  <canvas id="pdf-canvas"></canvas>
+
   <div id="output"><em>El texto extraído aparecerá aquí...</em></div>
+  <button onclick="copiarTexto()">Copiar texto extraído</button>
 
   <h2>Datos clave extraídos</h2>
   <div id="data">Aquí aparecerán los datos clave extraídos</div>
 
-  <canvas id="pdf-canvas"></canvas>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-  <script>
-    const canvas = document.getElementById("pdf-canvas");
-    const ctx = canvas.getContext("2d");
-    const output = document.getElementById("output");
-    const dataDiv = document.getElementById("data");
+const canvas = document.getElementById("pdf-canvas");
+const ctx = canvas.getContext("2d");
+const output = document.getElementById("output");
+const dataDiv = document.getElementById("data");
 
-    function aplicarFormatoBasico(text) {
-      // Mejora visual básica: aplica negritas a palabras clave
-      const patrones = [
-        [/REGIDORA.*?PRESIDENTA/gi, "<strong>$&</strong>"],
-        [/TESORER[IÍ]A MUNICIPAL/gi, "<strong>$&</strong>"],
-        [/ASUNTO:.*$/gmi, "<strong>$&</strong>"],
-        [/ATENTAMENTE/g, "<strong>$&</strong>"],
-        [/COORDINACI[ÓO]N.*$/gmi, "<strong>$&</strong>"]
-      ];
+let startX, startY, isSelecting = false, imageData;
+let rect = { x: 0, y: 0, w: 0, h: 0 };
 
-      for (let [patron, reemplazo] of patrones) {
-        text = text.replace(patron, reemplazo);
+function aplicarFormatoBasico(text) {
+  const patrones = [
+    [/REGIDORA.*?PRESIDENTA/gi, "<strong>$&</strong>"],
+    [/TESORER[IÍ]A MUNICIPAL/gi, "<strong>$&</strong>"],
+    [/ASUNTO:.*$/gmi, "<strong>$&</strong>"],
+    [/ATENTAMENTE/g, "<strong>$&</strong>"],
+    [/COORDINACI[ÓO]N.*$/gmi, "<strong>$&</strong>"]
+  ];
+  for (let [patron, reemplazo] of patrones) {
+    text = text.replace(patron, reemplazo);
+  }
+  return text;
+}
+
+function extraerDatosClave(text) {
+  const texto = text.toUpperCase();
+  const nombreMatch = texto.match(/REGIDORA\s+([A-ZÁÉÍÓÚÑ\s]+)PRESIDENTA/);
+  const nombre = nombreMatch ? nombreMatch[1].trim() : "No encontrado";
+  const fechaMatch = texto.match(/A\s+(\d{1,2}\s+DE\s+\w+\s+DE\s+\d{4})/);
+  const fecha = fechaMatch ? fechaMatch[1] : "No encontrado";
+  const montoMatch = texto.match(/\$\s?([\d,]+\.\d{2})/);
+  const monto = montoMatch ? montoMatch[0] : "No encontrado";
+  const claveMatch = texto.match(/\b5\d{8,9}\b/);
+  const clave = claveMatch ? claveMatch[0] : "No encontrado";
+  const oficioMatch = texto.match(/OFICIO\s+NO\.?\s*([A-Z0-9\-\/]+)/);
+  const oficio = oficioMatch ? oficioMatch[1] : "No encontrado";
+  return { nombre, fecha, monto, clave, oficio };
+}
+
+function copiarTexto() {
+  const tempText = document.createElement("textarea");
+  tempText.value = output.textContent;
+  document.body.appendChild(tempText);
+  tempText.select();
+  document.execCommand("copy");
+  document.body.removeChild(tempText);
+  alert("Texto copiado al portapapeles.");
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  const rectCanvas = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rectCanvas.width;
+  const scaleY = canvas.height / rectCanvas.height;
+
+  startX = (e.clientX - rectCanvas.left) * scaleX;
+  startY = (e.clientY - rectCanvas.top) * scaleY;
+  isSelecting = true;
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (!isSelecting) return;
+  const rectCanvas = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rectCanvas.width;
+  const scaleY = canvas.height / rectCanvas.height;
+
+  const mouseX = (e.clientX - rectCanvas.left) * scaleX;
+  const mouseY = (e.clientY - rectCanvas.top) * scaleY;
+
+  rect.w = mouseX - startX;
+  rect.h = mouseY - startY;
+  rect.x = startX;
+  rect.y = startY;
+
+  ctx.putImageData(imageData, 0, 0);
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+});
+
+canvas.addEventListener("mouseup", () => {
+  isSelecting = false;
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = Math.abs(rect.w);
+  tempCanvas.height = Math.abs(rect.h);
+  const tempCtx = tempCanvas.getContext("2d");
+
+  tempCtx.drawImage(
+    canvas,
+    rect.w < 0 ? rect.x + rect.w : rect.x,
+    rect.h < 0 ? rect.y + rect.h : rect.y,
+    Math.abs(rect.w),
+    Math.abs(rect.h),
+    0,
+    0,
+    Math.abs(rect.w),
+    Math.abs(rect.h)
+  );
+
+  output.innerHTML = "<em>Reconociendo texto del área seleccionada...</em>";
+
+  Tesseract.recognize(tempCanvas, "spa", {
+    logger: m => {
+      if (m.status === "recognizing text") {
+        output.innerHTML = `<em>OCR en progreso: ${Math.round(m.progress * 100)}%</em>`;
       }
-
-      return text;
     }
+  }).then(({ data: { text } }) => {
+    const textoFormateado = aplicarFormatoBasico(text.trim());
+    output.innerHTML = `<pre>${textoFormateado}</pre>`;
+    const datos = extraerDatosClave(text);
+    dataDiv.innerHTML = `
+      <strong>Nombre:</strong> ${datos.nombre} <br/>
+      <strong>Fecha:</strong> ${datos.fecha} <br/>
+      <strong>Monto:</strong> ${datos.monto} <br/>
+      <strong>Clave/Folio:</strong> ${datos.clave} <br/>
+      <strong>Número de Oficio:</strong> ${datos.oficio}
+    `;
+  }).catch(err => {
+    console.error("Error OCR:", err);
+    output.innerHTML = "<em>Error durante el OCR.</em>";
+  });
+});
 
-    function extraerDatosClave(text) {
-      const texto = text.toUpperCase();
+document.getElementById("pdfFile").addEventListener("change", async function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
 
-      const nombreMatch = texto.match(/REGIDORA\s+([A-ZÁÉÍÓÚÑ\s]+)PRESIDENTA/);
-      const nombre = nombreMatch ? nombreMatch[1].trim() : "No encontrado";
+  output.innerHTML = "<em>Procesando PDF, por favor espera...</em>";
+  dataDiv.innerHTML = "";
 
-      const fechaMatch = texto.match(/A\s+(\d{1,2}\s+DE\s+\w+\s+DE\s+\d{4})/);
-      const fecha = fechaMatch ? fechaMatch[1] : "No encontrado";
+  const fileReader = new FileReader();
 
-      const montoMatch = texto.match(/\$\s?([\d,]+\.\d{2})/);
-      const monto = montoMatch ? montoMatch[0] : "No encontrado";
+  fileReader.onload = async function () {
+    const typedarray = new Uint8Array(this.result);
+    const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.5 });
 
-      const claveMatch = texto.match(/\b5\d{8,9}\b/);
-      const clave = claveMatch ? claveMatch[0] : "No encontrado";
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
 
-      const oficioMatch = texto.match(/OFICIO\s+NO\.?\s*([A-Z0-9\-\/]+)/);
-      const oficio = oficioMatch ? oficioMatch[1] : "No encontrado";
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    output.innerHTML = "<em>Selecciona un área del documento con el mouse para hacer OCR.</em>";
+  };
 
-      return { nombre, fecha, monto, clave, oficio };
-    }
-
-    document.getElementById("pdfFile").addEventListener("change", async function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      output.innerHTML = "<em>Procesando PDF y aplicando OCR, por favor espera...</em>";
-      dataDiv.innerHTML = "";
-
-      const fileReader = new FileReader();
-
-      fileReader.onload = async function () {
-        const typedarray = new Uint8Array(this.result);
-
-        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
-        const page = await pdf.getPage(1);
-
-        const viewport = page.getViewport({ scale: 2.5 }); // Escala mayor = mejor OCR
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-
-        Tesseract.recognize(canvas, "spa", {
-          logger: m => {
-            if (m.status === "recognizing text") {
-              output.innerHTML = `<em>OCR en progreso: ${Math.round(m.progress * 100)}%</em>`;
-            }
-          }
-        }).then(({ data: { text } }) => {
-          const textoFormateado = aplicarFormatoBasico(text.trim());
-
-          output.innerHTML = `<pre>${textoFormateado}</pre>`;
-
-          const datos = extraerDatosClave(text);
-
-          dataDiv.innerHTML = `
-            <strong>Nombre:</strong> ${datos.nombre} <br/>
-            <strong>Fecha:</strong> ${datos.fecha} <br/>
-            <strong>Monto:</strong> ${datos.monto} <br/>
-            <strong>Clave/Folio:</strong> ${datos.clave} <br/>
-            <strong>Número de Oficio:</strong> ${datos.oficio}
-          `;
-        }).catch(err => {
-          console.error("Error OCR:", err);
-          output.innerHTML = "<em>Error durante el OCR.</em>";
-        });
-      };
-
-      fileReader.readAsArrayBuffer(file);
-    });
-  </script>
+  fileReader.readAsArrayBuffer(file);
+});
+</script>
 </body>
 </html>
-
