@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>OCR y extracción con formato</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 900px;
+      margin: auto;
+    }
+    #output {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #f9f9f9;
+      overflow-x: auto;
+    }
+    pre {
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    #data {
+      margin-top: 20px;
+      background: #eef;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Sube un PDF escaneado</h1>
+  <input type="file" id="pdfFile" accept="application/pdf" />
+  <div id="output"><em>El texto extraído aparecerá aquí...</em></div>
+
+  <h2>Datos clave extraídos</h2>
+  <div id="data">Aquí aparecerán los datos clave extraídos</div>
+
+  <canvas id="pdf-canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("pdf-canvas");
+    const ctx = canvas.getContext("2d");
+    const output = document.getElementById("output");
+    const dataDiv = document.getElementById("data");
+
+    function aplicarFormatoBasico(text) {
+      // Mejora visual básica: aplica negritas a palabras clave
+      const patrones = [
+        [/REGIDORA.*?PRESIDENTA/gi, "<strong>$&</strong>"],
+        [/TESORER[IÍ]A MUNICIPAL/gi, "<strong>$&</strong>"],
+        [/ASUNTO:.*$/gmi, "<strong>$&</strong>"],
+        [/ATENTAMENTE/g, "<strong>$&</strong>"],
+        [/COORDINACI[ÓO]N.*$/gmi, "<strong>$&</strong>"]
+      ];
+
+      for (let [patron, reemplazo] of patrones) {
+        text = text.replace(patron, reemplazo);
+      }
+
+      return text;
+    }
+
+    function extraerDatosClave(text) {
+      const texto = text.toUpperCase();
+
+      const nombreMatch = texto.match(/REGIDORA\s+([A-ZÁÉÍÓÚÑ\s]+)PRESIDENTA/);
+      const nombre = nombreMatch ? nombreMatch[1].trim() : "No encontrado";
+
+      const fechaMatch = texto.match(/A\s+(\d{1,2}\s+DE\s+\w+\s+DE\s+\d{4})/);
+      const fecha = fechaMatch ? fechaMatch[1] : "No encontrado";
+
+      const montoMatch = texto.match(/\$\s?([\d,]+\.\d{2})/);
+      const monto = montoMatch ? montoMatch[0] : "No encontrado";
+
+      const claveMatch = texto.match(/\b5\d{8,9}\b/);
+      const clave = claveMatch ? claveMatch[0] : "No encontrado";
+
+      const oficioMatch = texto.match(/OFICIO\s+NO\.?\s*([A-Z0-9\-\/]+)/);
+      const oficio = oficioMatch ? oficioMatch[1] : "No encontrado";
+
+      return { nombre, fecha, monto, clave, oficio };
+    }
+
+    document.getElementById("pdfFile").addEventListener("change", async function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      output.innerHTML = "<em>Procesando PDF y aplicando OCR, por favor espera...</em>";
+      dataDiv.innerHTML = "";
+
+      const fileReader = new FileReader();
+
+      fileReader.onload = async function () {
+        const typedarray = new Uint8Array(this.result);
+
+        const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+        const page = await pdf.getPage(1);
+
+        const viewport = page.getViewport({ scale: 2.5 }); // Escala mayor = mejor OCR
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        Tesseract.recognize(canvas, "spa", {
+          logger: m => {
+            if (m.status === "recognizing text") {
+              output.innerHTML = `<em>OCR en progreso: ${Math.round(m.progress * 100)}%</em>`;
+            }
+          }
+        }).then(({ data: { text } }) => {
+          const textoFormateado = aplicarFormatoBasico(text.trim());
+
+          output.innerHTML = `<pre>${textoFormateado}</pre>`;
+
+          const datos = extraerDatosClave(text);
+
+          dataDiv.innerHTML = `
+            <strong>Nombre:</strong> ${datos.nombre} <br/>
+            <strong>Fecha:</strong> ${datos.fecha} <br/>
+            <strong>Monto:</strong> ${datos.monto} <br/>
+            <strong>Clave/Folio:</strong> ${datos.clave} <br/>
+            <strong>Número de Oficio:</strong> ${datos.oficio}
+          `;
+        }).catch(err => {
+          console.error("Error OCR:", err);
+          output.innerHTML = "<em>Error durante el OCR.</em>";
+        });
+      };
+
+      fileReader.readAsArrayBuffer(file);
+    });
+  </script>
+</body>
+</html>
+
