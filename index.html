@@ -67,10 +67,7 @@
 
   <h2>Datos clave extraídos</h2>
   <div id="data">Textos extraídos</div>
-<div id="copiado-msg" style="display:none; background:#dff0d8; color:#3c763d; padding:10px; border-radius:4px; margin-top:10px;">
-  Texto copiado al portapapeles.
-</div>
-  
+ 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -119,12 +116,14 @@ function copiarTexto() {
   document.execCommand("copy");
   document.body.removeChild(tempText);
 
-  const mensaje = document.getElementById("copiado-msg");
-  mensaje.style.display = "block";
+  // Mostrar notificación tipo toast
+  const toast = document.getElementById("toast");
+  toast.style.display = "block";
 
+  // Ocultarla automáticamente después de 3 segundos
   setTimeout(() => {
-    mensaje.style.display = "none";
-  }, 1500); // Oculta el mensaje después de 3 segundos
+    toast.style.display = "none";
+  }, 1500);
 }
 canvas.addEventListener("mousedown", (e) => {
   const rectCanvas = canvas.getBoundingClientRect();
@@ -226,5 +225,22 @@ document.getElementById("pdfFile").addEventListener("change", async function (e)
   fileReader.readAsArrayBuffer(file);
 });
 </script>
+  <div id="toast" style="
+  display: none;
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #4caf50;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  z-index: 1000;
+  font-size: 16px;
+">
+  Texto copiado al portapapeles.
+</div>
+
 </body>
 </html>
