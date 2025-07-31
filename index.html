@@ -67,7 +67,10 @@
 
   <h2>Datos clave extraídos</h2>
   <div id="data">Textos extraídos</div>
-
+<div id="copiado-msg" style="display:none; background:#dff0d8; color:#3c763d; padding:10px; border-radius:4px; margin-top:10px;">
+  Texto copiado al portapapeles.
+</div>
+  
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
@@ -115,9 +118,14 @@ function copiarTexto() {
   tempText.select();
   document.execCommand("copy");
   document.body.removeChild(tempText);
-  alert("Texto copiado al portapapeles.");
-}
 
+  const mensaje = document.getElementById("copiado-msg");
+  mensaje.style.display = "block";
+
+  setTimeout(() => {
+    mensaje.style.display = "none";
+  }, 1500); // Oculta el mensaje después de 3 segundos
+}
 canvas.addEventListener("mousedown", (e) => {
   const rectCanvas = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rectCanvas.width;
